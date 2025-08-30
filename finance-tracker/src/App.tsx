@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Download, PlusCircle, Upload, Trash2, TrendingDown, Wallet, PieChart as PieIcon, BarChart3, CalendarDays, Filter } from "lucide-react";
+import { Download, PlusCircle, Upload, Trash2, TrendingDown, Wallet, PieChart as PieIcon, BarChart3, CalendarDays, Filter, LogOut } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -40,6 +40,9 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { useAuth } from "./contexts/AuthContext";
+import { AuthWrapper } from "./components/AuthWrapper";
+import { dataService } from "./services/dataService";
 
 // -------------------- Types --------------------
 interface Expense {
@@ -263,19 +266,68 @@ function analyze(expenses: Expense[], budgets: Budgets, month: string): Analysis
 
 // -------------------- Component --------------------
 export default function App(): JSX.Element {
+  return (
+    <AuthWrapper>
+      <FinanceTracker />
+    </AuthWrapper>
+  );
+}
+
+function FinanceTracker(): JSX.Element {
+  const { user, logout } = useAuth();
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  const [data, setData] = useLocalState<FinanceData>(LOCAL_KEY, SAMPLE_DATA);
+  const [data, setData] = useState<FinanceData>({ expenses: [], categories: [], budgets: {} });
   const [month, setMonth] = useState<string>(defaultMonth);
   const [filters, setFilters] = useState<Filters>({ q: "", cat: "All", need: "All" });
+  const [isLoading, setIsLoading] = useState(true);
 
-  const addExpense = (exp: Omit<Expense, 'id'>): void => {
-    setData((prev) => ({ ...prev, expenses: [{ ...exp, id: crypto.randomUUID() }, ...prev.expenses] }));
+  // Load initial data
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [expenses, budgets] = await Promise.all([
+        dataService.getExpenses(),
+        dataService.getBudgets(month)
+      ]);
+      
+      setData({
+        expenses,
+        categories: dataService.getCategories(),
+        budgets
+      });
+    } catch (error) {
+      console.error('Failed to load data:', error);
+      // Fallback to sample data
+      setData(SAMPLE_DATA);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const deleteExpense = (id: string): void => {
-    setData((prev) => ({ ...prev, expenses: prev.expenses.filter((e) => e.id !== id) }));
+  const addExpense = async (exp: Omit<Expense, 'id'>): Promise<void> => {
+    try {
+      const newExpense = await dataService.addExpense(exp);
+      setData(prev => ({ ...prev, expenses: [newExpense, ...prev.expenses] }));
+    } catch (error) {
+      console.error('Failed to add expense:', error);
+      alert('Failed to add expense. Please try again.');
+    }
+  };
+
+  const deleteExpense = async (id: string): Promise<void> => {
+    try {
+      await dataService.deleteExpense(id);
+      setData(prev => ({ ...prev, expenses: prev.expenses.filter(e => e.id !== id) }));
+    } catch (error) {
+      console.error('Failed to delete expense:', error);
+      alert('Failed to delete expense. Please try again.');
+    }
   };
 
   const analysis = useMemo(() => analyze(data.expenses, data.budgets, month), [data.expenses, data.budgets, month]);
@@ -288,47 +340,42 @@ export default function App(): JSX.Element {
     return matchesQ && matchesCat && matchesNeed;
   });
 
-  const exportCSV = (): void => {
-    const headers = ["date", "amount", "category", "merchant", "note", "need"];
-    const lines = [headers.join(",")].concat(
-      data.expenses.map((e) => [e.date, e.amount, e.category, e.merchant, (e.note || "").replace(/,/g, ";"), e.need ? "need" : "want"].join(","))
-    );
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `expenses_${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const exportCSV = async (): Promise<void> => {
+    try {
+      await dataService.exportCSV(month);
+    } catch (error) {
+      console.error('Failed to export CSV:', error);
+      alert('Failed to export CSV. Please try again.');
+    }
   };
 
-  const importCSV = (file: File): void => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = reader.result?.toString() || "";
-      const [header, ...rows] = text.split(/\r?\n/).filter(Boolean);
-      const cols = header.split(",");
-      const idx: { [key: string]: number } = Object.fromEntries(cols.map((c, i) => [c.trim().toLowerCase(), i]));
-      const expenses = rows.map((r) => {
-        const c = r.split(",");
-        return {
-          id: crypto.randomUUID(),
-          date: c[idx.date] || new Date().toISOString().slice(0, 10),
-          amount: Number(c[idx.amount] || 0),
-          category: c[idx.category] || "Other",
-          merchant: c[idx.merchant] || "",
-          note: c[idx.note] || "",
-          need: ((c[idx.need] || "").toLowerCase().trim() === "need") || false,
-        };
-      });
-      setData((prev) => ({ ...prev, expenses: [...expenses, ...prev.expenses] }));
-    };
-    reader.readAsText(file);
+  const importCSV = async (file: File): Promise<void> => {
+    try {
+      const result = await dataService.importCSV(file);
+      alert(`Successfully imported ${result.imported_count} expenses`);
+      // Refresh data after import
+      await loadData();
+    } catch (error) {
+      console.error('Failed to import CSV:', error);
+      alert('Failed to import CSV. Please try again.');
+    }
   };
 
-  const resetAll = (): void => setData(SAMPLE_DATA);
+  const resetAll = (): void => {
+    dataService.resetData();
+    setData(SAMPLE_DATA);
+  };
 
-  const setBudget = (cat: string, val: string): void => setData((p) => ({ ...p, budgets: { ...p.budgets, [cat]: Number(val) || 0 } }));
+  const setBudget = async (cat: string, val: string): Promise<void> => {
+    try {
+      const amount = Number(val) || 0;
+      await dataService.setBudget(cat, amount, month);
+      setData(prev => ({ ...prev, budgets: { ...prev.budgets, [cat]: amount } }));
+    } catch (error) {
+      console.error('Failed to set budget:', error);
+      alert('Failed to set budget. Please try again.');
+    }
+  };
 
   const suggestions = useMemo((): Suggestion[] => {
     const list: Suggestion[] = [];
@@ -376,6 +423,17 @@ export default function App(): JSX.Element {
     return list.sort((a,b) => b.impact-a.impact).slice(0,5);
   }, [analysis]);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your financial data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -386,6 +444,9 @@ export default function App(): JSX.Element {
               <Wallet className="h-8 w-8" /> Personal Finance Coach
             </h1>
             <p className="text-slate-600">Track daily expenses, spot leaks, and get tailored suggestions to lower your monthly spending.</p>
+            {user && (
+              <p className="text-sm text-slate-500">Welcome back, {user.username}!</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" onClick={exportCSV}><Download className="mr-2 h-4 w-4"/>Export</Button>
@@ -394,6 +455,7 @@ export default function App(): JSX.Element {
               <span className="px-3 py-2 rounded-2xl bg-white shadow hover:shadow-md text-sm inline-flex items-center gap-2"><Upload className="h-4 w-4"/>Import CSV</span>
             </label>
             <Button variant="destructive" onClick={resetAll}><Trash2 className="mr-2 h-4 w-4"/>Reset</Button>
+            <Button variant="outline" onClick={logout}><LogOut className="mr-2 h-4 w-4"/>Logout</Button>
           </div>
         </div>
 
@@ -415,7 +477,25 @@ export default function App(): JSX.Element {
               <CardDescription>Analyze a specific month.</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center gap-3">
-              <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="max-w-xs"/>
+              <Input 
+                type="month" 
+                value={month} 
+                onChange={async (e) => {
+                  const newMonth = e.target.value;
+                  setMonth(newMonth);
+                  // Reload data for the new month
+                  try {
+                    const [expenses, budgets] = await Promise.all([
+                      dataService.getExpenses({ month: newMonth }),
+                      dataService.getBudgets(newMonth)
+                    ]);
+                    setData(prev => ({ ...prev, expenses, budgets }));
+                  } catch (error) {
+                    console.error('Failed to load data for month:', error);
+                  }
+                }} 
+                className="max-w-xs"
+              />
               <Badge variant="secondary">{startOfMonth(`${month}-01`)} → {endOfMonth(`${month}-01`)}</Badge>
             </CardContent>
           </Card>
