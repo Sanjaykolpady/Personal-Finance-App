@@ -5,6 +5,9 @@ from app.database import get_db
 from app.models import Expense
 from app.schemas import ExpenseCreate, ExpenseUpdate, Expense as ExpenseSchema
 from app.dependencies import get_current_user_id
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,6 +22,7 @@ async def create_expense(
         **expense.dict(),
         user_id=current_user_id
     )
+    logger.info(f"Creating expense: {db_expense}")
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)

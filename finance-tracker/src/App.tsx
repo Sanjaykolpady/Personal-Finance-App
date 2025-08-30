@@ -149,16 +149,16 @@ function endOfMonth(iso: string): string {
 }
 
 // -------------------- Sample Data --------------------
-const SAMPLE_DATA: FinanceData = {
-  expenses: [
-    { id: "e1", date: new Date().toISOString().slice(0,10), amount: 250, category: "Transport", merchant: "Uber", note: "Office commute", need: true },
-    { id: "e2", date: new Date().toISOString().slice(0,10), amount: 1200, category: "Groceries", merchant: "Big Bazaar", note: "Weekly veg & fruits", need: true },
-    { id: "e3", date: new Date().toISOString().slice(0,10), amount: 399, category: "Dining", merchant: "Swiggy", note: "Lunch", need: false },
-    { id: "e4", date: new Date().toISOString().slice(0,10), amount: 999, category: "Entertainment", merchant: "Netflix", note: "Monthly subscription", need: false },
-  ],
-  categories: DEFAULT_CATEGORIES,
-  budgets: Object.fromEntries(DEFAULT_CATEGORIES.map((c) => [c, 0])),
-};
+// const SAMPLE_DATA: FinanceData = {
+//   expenses: [
+//     { id: "e1", date: new Date().toISOString().slice(0,10), amount: 250, category: "Transport", merchant: "Uber", note: "Office commute", need: true },
+//     { id: "e2", date: new Date().toISOString().slice(0,10), amount: 1200, category: "Groceries", merchant: "Big Bazaar", note: "Weekly veg & fruits", need: true },
+//     { id: "e3", date: new Date().toISOString().slice(0,10), amount: 399, category: "Dining", merchant: "Swiggy", note: "Lunch", need: false },
+//     { id: "e4", date: new Date().toISOString().slice(0,10), amount: 999, category: "Entertainment", merchant: "Netflix", note: "Monthly subscription", need: false },
+//   ],
+//   categories: DEFAULT_CATEGORIES,
+//   budgets: Object.fromEntries(DEFAULT_CATEGORIES.map((c) => [c, 0])),
+// };
 
 // -------------------- Helpers --------------------
 function useLocalState<T>(key: string, initial: T): [T, React.Dispatch<React.SetStateAction<T>>] {

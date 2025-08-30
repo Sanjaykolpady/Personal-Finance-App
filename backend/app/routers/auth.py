@@ -5,6 +5,9 @@ from app.models import User
 from app.schemas import UserCreate, UserLogin, Token, User as UserSchema
 from app.auth import verify_password, get_password_hash, create_access_token
 from app.dependencies import get_current_user
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,6 +36,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         username=user.username,
         hashed_password=hashed_password
     )
+    logger.info(f"Creating user: {db_user}")
     
     db.add(db_user)
     db.commit()
@@ -50,6 +54,7 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    logger.info(f"Logging in user: {user}")
     
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
